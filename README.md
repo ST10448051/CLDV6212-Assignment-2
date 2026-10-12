@@ -313,7 +313,7 @@ The Compose service may use `restart: unless-stopped` to recover from unexpected
 
 - **Student:** ST10448051
 - **Module:** CLDV6212
-- **GitHub repository:** [ADD REPOSITORY URL]
+- **GitHub repository:** https://github.com/ST10448051/CLDV6212-Assignment-2
 - **Docker Hub:** https://hub.docker.com/r/st10448051/coffeenchill-functions
 
 ---
