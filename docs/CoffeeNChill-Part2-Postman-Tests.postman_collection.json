@@ -1,0 +1,195 @@
+{
+  "info": {
+    "name": "CoffeeNChill Part 2 - Queue Processing Tests",
+    "description": "Postman collection for the CoffeeNChill Azure Functions Part 2 assessment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Submit valid order (202)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/queue",
+        "description": "Creates a unique order and saves orderId/orderDate for the lookup.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"OrderId\": \"{{orderId}}\",\n  \"CustomerName\": \"Postman Test Customer\",\n  \"SelectedItemSKUs\": [\n    \"COF-001\",\n    \"PAS-104\"\n  ],\n  \"TotalPrice\": 65.0,\n  \"OrderTimestamp\": \"{{orderTimestamp}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const now = new Date();",
+              "const id = 'ORD-PM-' + now.getTime() + '-' + Math.floor(Math.random() * 10000);",
+              "pm.collectionVariables.set('orderId', id);",
+              "pm.collectionVariables.set('orderDate', now.toISOString().slice(0, 10));",
+              "pm.collectionVariables.set('orderTimestamp', now.toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 202 Accepted', () => pm.response.to.have.status(202));",
+              "const data = pm.response.json();",
+              "pm.test('Order ID matches', () => pm.expect(data.OrderId ?? data.orderId).to.eql(pm.collectionVariables.get('orderId')));",
+              "pm.test('Queue acknowledgement returned', () => pm.expect((data.Message ?? data.message) || '').to.include('queued'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Retrieve processed order (200)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/orders/{{orderDate}}/{{orderId}}",
+        "description": "Run 15+ seconds after request 01; the queue trigger simulates 3 transitions with 3-second waits. In Collection Runner, set Delay to 12000\u201315000 ms between requests."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 - order processed', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json();",
+              "  pm.test('Correct row key', () => pm.expect(data.RowKey ?? data.rowKey).to.eql(pm.collectionVariables.get('orderId')));",
+              "  pm.test('Correct partition key', () => pm.expect(data.PartitionKey ?? data.partitionKey).to.eql(pm.collectionVariables.get('orderDate')));",
+              "  pm.test('Order reached Collected', () => pm.expect(data.Status ?? data.status).to.eql('Collected'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Invalid order (400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/queue",
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"OrderId\": \"BAD-ORDER\",\n  \"CustomerName\": \"\",\n  \"SelectedItemSKUs\": [],\n  \"TotalPrice\": -1,\n  \"OrderTimestamp\": \"{{orderTimestamp}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400 Bad Request', () => pm.response.to.have.status(400));",
+              "const data = pm.response.json();",
+              "pm.test('Validation error included', () => pm.expect(data.Error ?? data.error).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Malformed JSON (400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/queue",
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"OrderId\":",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400 Bad Request', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Unknown order (404)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/orders/2026-10-12/ORD-DOES-NOT-EXIST",
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404 Not Found', () => pm.response.to.have.status(404));",
+              "const data = pm.response.json();",
+              "pm.test('Not found error included', () => pm.expect(data.Error ?? data.error).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "orderDate",
+      "value": ""
+    },
+    {
+      "key": "orderTimestamp",
+      "value": ""
+    }
+  ]
+}
